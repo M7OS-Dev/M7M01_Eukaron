@@ -113,6 +113,7 @@ F31    $ft11      temporary (caller-save)
     .global             ___RME_RV64V_MISA_Get
     .global             ___RME_RV64V_SSTATUS_Get
     .global             ___RME_RV64V_SSTATUS_Set
+    .global             ___RME_RV64V_SCOUNTEREN_Set
     /* MMU (satp) manipulations */
     .global             ___RME_RV64V_SATP_Set
     .global             ___RME_RV64V_TLB_Flush
@@ -352,6 +353,23 @@ ___RME_RV64V_SSTATUS_Set:
     RET
 /* End Function:___RME_RV64V_SSTATUS_Set *************************************/
 
+/* Function:___RME_RV64V_SCOUNTEREN_Set ***************************************
+Description : Set the SCOUNTEREN register content, controlling which counters
+              the user mode (U-mode) may read. Bit 0 = CY (cycle), bit 1 = TM
+              (time), bit 2 = IR (instret). The benchmark reads the cycle
+              counter from user mode as its timestamp counter.
+Input       : a0 - The SCOUNTEREN value (0x7 = cycle|time|instret).
+Output      : None.
+Return      : None.
+******************************************************************************/
+    .section            .text.___rme_rv64v_scounteren_set
+    .align              3
+
+___RME_RV64V_SCOUNTEREN_Set:
+    CSRW                scounteren, a0
+    RET
+/* End Function:___RME_RV64V_SCOUNTEREN_Set **********************************/
+
 /* Function:___RME_RV64V_SATP_Set *********************************************
 Description : Write the satp register to enable/switch the Sv39 MMU.
               satp layout: [63:60] MODE = 8 (Sv39), [59:44] ASID,
@@ -475,6 +493,13 @@ __RME_RV64V_Handler:
 
     /* Load sstatus */
     LD                  a0,0*8(sp)
+    /* Clear the SIE bit in the value being restored. If a timer interrupt
+     * fires while we are still on the kernel stack (sscratch already holds
+     * the user sp below), the nested trap would save the frame onto the user
+     * stack, faulting because the kernel page table does not map it. SRET
+     * restores SIE from SPIE, so user mode still gets interrupts. */
+    LI                  t0,-3
+    AND                 a0,a0,t0
     CSRW                sstatus,a0
     /* Load pc (into sepc) */
     LD                  a0,1*8(sp)

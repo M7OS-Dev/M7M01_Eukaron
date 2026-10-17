@@ -246,6 +246,10 @@ while(0)
 #define RME_RV64V_SCAUSE_SPGFLT                 (0x0000000FU)
 
 /* Initialization ************************************************************/
+/* Size of initial capability table - 64 entries so the init process has room
+ * for the benchmark's cross-process objects (new captbl, page tables, process
+ * and thread) in slots 9..63. */
+#define RME_RV64V_INIT_CPT_SIZE                 (64U)
 /* The capability table of the init process */
 #define RME_BOOT_INIT_CPT                       (0U)
 /* The top-level (Sv39 root) page table of the init process. One entry covers
@@ -693,6 +697,8 @@ RME_EXTERN rme_ptr_t ___RME_RV64V_CYCLE_Get(void);
 RME_EXTERN rme_ptr_t ___RME_RV64V_MISA_Get(void);
 RME_EXTERN rme_ptr_t ___RME_RV64V_SSTATUS_Get(void);
 RME_EXTERN void ___RME_RV64V_SSTATUS_Set(rme_ptr_t Value);
+/* Counter-enable - which counters the user mode may read */
+RME_EXTERN void ___RME_RV64V_SCOUNTEREN_Set(rme_ptr_t Value);
 /* MMU (satp) manipulations */
 RME_EXTERN void ___RME_RV64V_SATP_Set(rme_ptr_t Value);
 RME_EXTERN void ___RME_RV64V_TLB_Flush(void);

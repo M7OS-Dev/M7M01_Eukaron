@@ -916,9 +916,11 @@ void __RME_Boot(void)
     rme_cnt_t Count;
     Cur_Addr=RME_KOM_VA_BASE;
 
-    /* Create the capability table for the init process */
-    RME_ASSERT(_RME_Cpt_Boot_Init(RME_BOOT_INIT_CPT,Cur_Addr,16)==RME_BOOT_INIT_CPT);
-    Cur_Addr+=RME_KOM_ROUND(RME_CPT_SIZE(16));
+    /* Create the capability table for the init process - RME_RV64V_INIT_CPT_SIZE
+     * entries so there is room for the benchmark's cross-process objects
+     * (a new captbl, page tables, process and thread) in slots 9..63. */
+    RME_ASSERT(_RME_Cpt_Boot_Init(RME_BOOT_INIT_CPT,Cur_Addr,RME_RV64V_INIT_CPT_SIZE)==RME_BOOT_INIT_CPT);
+    Cur_Addr+=RME_KOM_ROUND(RME_CPT_SIZE(RME_RV64V_INIT_CPT_SIZE));
 
     /* Sv39 locates a page table through its PPN, so every table object must be
      * 4KB aligned (the KOM allocation granularity is only 16 bytes) */
@@ -977,12 +979,16 @@ void __RME_Boot(void)
                                  RME_PGT_ALL_PERM)==0);
 
     /* The init thread's user code at VA 0x20000000, backed by physical
-     * 0x81030000 where the loader placed the image. */
-    RME_ASSERT(_RME_Pgt_Boot_Add(RME_RV64V_CPT,
-                                 RME_BOOT_INIT_PGT_L2,
-                                 0x81030000U,
-                                 0U,
-                                 RME_PGT_ALL_PERM)==0);
+     * 0x81030000 where the loader placed the image. Map 16 pages (64KB) so
+     * the init program's .data/.bss beyond the first page is reachable. */
+    for(Count=0;Count<16;Count++)
+    {
+        RME_ASSERT(_RME_Pgt_Boot_Add(RME_RV64V_CPT,
+                                     RME_BOOT_INIT_PGT_L2,
+                                     0x81030000U+(((rme_ptr_t)Count)<<RME_PGT_SIZE_4K),
+                                     (rme_ptr_t)Count,
+                                     RME_PGT_ALL_PERM)==0);
+    }
 
     /* The init thread's stack: VA [0x201F0000,0x20200000) -> physical
      * [0x81010000,0x81020000); the stack pointer starts at 0x20200000. */
@@ -1049,6 +1055,10 @@ void __RME_Boot(void)
 #endif
     __RME_Pgt_Set(RME_RV64V_Local.Thd_Cur->Sched.Prc->Pgt);
     __RME_Int_Enable();
+
+    /* Let the user mode read the cycle/time/instret counters - the benchmark
+     * uses the cycle counter as its timestamp counter. */
+    ___RME_RV64V_SCOUNTEREN_Set(0x7U);
 
     /* Boot into the init thread - a user program loaded at a fixed address */
     __RME_User_Enter(RME_RV64V_INIT_ENTRY,RME_RV64V_INIT_STACK,0U);
