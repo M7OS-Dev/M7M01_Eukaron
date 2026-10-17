@@ -149,10 +149,6 @@ typedef rme_s64_t rme_ret_t;
 
 /* RV64V Macro ***************************************************************/
 /* Generic *******************************************************************/
-/* Register access */
-#define RME_RV64V_REG(X)                        (*((volatile rme_ptr_t*)(X)))
-#define RME_RV64V_REGB(X)                       (*((volatile rme_u8_t*)(X)))
-
 /* SSTATUS default initialization (transparent interrupt possible) */
 #define RME_RV64V_SSTATUS_INIT                  (0x00000022U)
 #define RME_RV64V_SSTATUS_RET_KERNEL            (0x00000100U)
@@ -342,11 +338,6 @@ while(0)
 #define RME_RV64V_KFN_PGT_ENTRY_MOD_FLAG_GET    (0U)
 #define RME_RV64V_KFN_PGT_ENTRY_MOD_SZORD_GET   (1U)
 #define RME_RV64V_KFN_PGT_ENTRY_MOD_NMORD_GET   (2U)
-/* Interrupt source configuration */
-#define RME_RV64V_KFN_INT_LOCAL_MOD_STATE_GET   (0U)
-#define RME_RV64V_KFN_INT_LOCAL_MOD_STATE_SET   (1U)
-#define RME_RV64V_KFN_INT_LOCAL_MOD_PRIO_GET    (2U)
-#define RME_RV64V_KFN_INT_LOCAL_MOD_PRIO_SET    (3U)
 /* Prefetcher modification */
 #define RME_RV64V_KFN_PRFTH_MOD_STATE_GET       (0U)
 #define RME_RV64V_KFN_PRFTH_MOD_STATE_SET       (1U)
@@ -627,11 +618,6 @@ static rme_ret_t __RME_RV64V_Pgt_Entry_Mod(struct RME_Cap_Cpt* Cpt,
                                            rme_ptr_t Vaddr,
                                            rme_ptr_t Type);
 #endif
-static rme_ret_t __RME_RV64V_Int_Local_Mod(rme_ptr_t Int_Num,
-                                           rme_ptr_t Operation,
-                                           rme_ptr_t Param);
-static rme_ret_t __RME_RV64V_Int_Local_Trig(rme_ptr_t CPUID,
-                                            rme_ptr_t Int_Num);
 static rme_ret_t __RME_RV64V_Cache_Maint(rme_ptr_t Cache_ID,
                                          rme_ptr_t Operation,
                                          rme_ptr_t Param);

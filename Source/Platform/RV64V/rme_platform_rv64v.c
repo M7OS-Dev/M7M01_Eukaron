@@ -233,7 +233,7 @@ void _RME_RV64V_Handler(struct RME_Reg_Struct* Reg)
     Scause=___RME_RV64V_SCAUSE_Get();
 
     /* Timer handler */
-    if(Scause==(RME_RV64V_SCAUSE_TIM|RME_RV64V_SCAUSE_INT))
+    if(Scause==RME_RV64V_SCAUSE_S_TIM)
     {
         /* Re-arm the next SBI timer event - it does not auto-reload */
         ___RME_RV64V_Sbi_Timer_Set(___RME_RV64V_Time_Get()+RME_RV64V_OSTIM_VAL);
@@ -317,73 +317,6 @@ rme_ret_t __RME_RV64V_Pgt_Entry_Mod(struct RME_Cap_Cpt* Cpt,
 }
 #endif
 /* End Function:__RME_RV64V_Pgt_Entry_Mod ************************************/
-
-/* Function:__RME_RV64V_Int_Local_Mod *****************************************
-Description : Consult or modify the local interrupt controller's vector state.
-Input       : rme_tid_t Int_Num - The interrupt number to consult or modify.
-              rme_tid_t Operation - The operation to conduct.
-              rme_tid_t Param - The parameter, could be state or priority.
-Output      : None.
-Return      : rme_ret_t - If successful, 0 or the desired value; else RME_ERR_KFN_FAIL.
-******************************************************************************/
-rme_ret_t __RME_RV64V_Int_Local_Mod(rme_ptr_t Int_Num,
-                                    rme_ptr_t Operation,
-                                    rme_ptr_t Param)
-{
-    if(Int_Num>=RME_RVM_PHYS_VCT_NUM)
-        return RME_ERR_KFN_FAIL;
-    
-    /* Call header for chip-specific operations */
-    switch(Operation)
-    {
-        case RME_RV64V_KFN_INT_LOCAL_MOD_STATE_GET:
-        {
-            return RME_RV64V_INT_STATE_GET(Int_Num);
-        }
-        case RME_RV64V_KFN_INT_LOCAL_MOD_STATE_SET:
-        {
-            if(Param==0U)
-                RME_RV64V_INT_STATE_DISABLE(Int_Num);
-            else
-                RME_RV64V_INT_STATE_ENABLE(Int_Num);
-            break;
-        }
-        case RME_RV64V_KFN_INT_LOCAL_MOD_PRIO_GET:
-        {
-            RME_RV64V_INT_PRIO_GET(Int_Num);
-            break;
-        }
-        case RME_RV64V_KFN_INT_LOCAL_MOD_PRIO_SET:
-        {
-            RME_RV64V_INT_PRIO_SET(Int_Num,Param);
-            break;
-        }
-        default:return RME_ERR_KFN_FAIL;
-    }
-
-    return 0;
-}
-/* End Function:__RME_RV64V_Int_Local_Mod ************************************/
-
-/* Function:__RME_RV64V_Int_Local_Trig ****************************************
-Description : Trigger a CPU's local event source.
-Input       : rme_ptr_t CPUID - The ID of the CPU.
-              rme_ptr_t Evt_Num - The event ID.
-Output      : None.
-Return      : rme_ret_t - If successful, 0; else RME_ERR_KFN_FAIL.
-******************************************************************************/
-rme_ret_t __RME_RV64V_Int_Local_Trig(rme_ptr_t CPUID,
-                                     rme_ptr_t Int_Num)
-{
-    if(Int_Num>=RME_RVM_PHYS_VCT_NUM)
-        return RME_ERR_KFN_FAIL;
-
-    /* Have to call the header - this is chip specific */
-    RME_RV64V_INT_LOCAL_TRIG(Int_Num);
-
-    return 0;
-}
-/* End Function:__RME_RV64V_Int_Local_Trig ***********************************/
 
 /* Function:__RME_RV64V_Cache_Mod *********************************************
 Description : Modify cache state. We do not make assumptions about cache contents.
@@ -716,20 +649,11 @@ rme_ret_t __RME_Kfn_Handler(struct RME_Cap_Cpt* Cpt,
         }
 #endif
 /* Interrupt controller operations *******************************************/
-        case RME_KFN_INT_LOCAL_MOD:
-        {
-            Retval=__RME_RV64V_Int_Local_Mod(Sub_ID,
-                                             Param1,
-                                             Param2);
-            break;
-        }
+        /* QEMU virt has no PFIC - interrupt management is handled by OpenSBI
+         * (PLIC/CLINT) at the trap level, so these are unsupported. */
+        case RME_KFN_INT_LOCAL_MOD:     {return RME_ERR_KFN_FAIL;}
         case RME_KFN_INT_GLOBAL_MOD:    {return RME_ERR_KFN_FAIL;}
-        case RME_KFN_INT_LOCAL_TRIG:
-        {
-            Retval=__RME_RV64V_Int_Local_Trig(Sub_ID,   /* No ctxsw, int ctxsw later */
-                                              Param1);
-            break;
-        }
+        case RME_KFN_INT_LOCAL_TRIG:    {return RME_ERR_KFN_FAIL;}
         case RME_KFN_EVT_LOCAL_TRIG:    {return RME_ERR_KFN_FAIL;}
 /* Cache operations **********************************************************/
         case RME_KFN_CACHE_MOD:
@@ -1045,9 +969,6 @@ void __RME_Boot(void)
     Size=RME_REG_SIZE(0U);
     Size=RME_REG_SIZE(0U)+sizeof(struct RME_RV64V_Cop_Struct);
     Size=RME_THD_SIZE(0U); */
-
-    /* Before we go into user level, make sure that the kernel object allocation is within the limits */
-    RME_ASSERT(Cur_Addr<(RME_KOM_VA_BASE+RME_RVM_KOM_BOOT_FRONT));
 
     /* Enable the MMU (satp) & interrupt */
 #if(RME_PGT_RAW_ENABLE==0U)
