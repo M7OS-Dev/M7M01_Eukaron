@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+
 # Build and run the RME kernel on SpacemiT K3 (Banana Pi BPI-SM10) via ostool.
 cd "$(dirname "$0")"
 

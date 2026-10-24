@@ -1,18 +1,13 @@
-# ostool board run config for the RME kernel on SpacemiT K3
-# (Banana Pi BPI-SM10, board_type "BananaPi").
-#
-# U-Boot loads the FIT image at fit_load_addr/bootm_addr, extracts the kernel
-# to kernel_load_addr (0x102200000) and enters it in S-mode. The K3 OpenSBI
-# stays resident and serves the SBI console/timer/reset calls the kernel uses.
-#
-# Success: the kernel has no shell, so the runner only watches the serial
-# stream. The acceptance marker is the benchmark's "RME BENCH REPORT OK"
-# printed by the user-mode init program.
+# ostool board run config for Banana Pi BPI-SM10 (board_type "BananaPi").
+# U-Boot loads the FIT image at fit_load_addr/bootm_addr, unpacks the kernel
+# to kernel_load_addr (0x102200000, matching the linker LMA) and enters it in
+# S-mode; OpenSBI stays resident in M-mode. The kernel has no shell, so the
+# runner only watches the serial stream for "RME BENCH REPORT OK" or a panic.
 board_type = "BananaPi"
-kernel_load_addr = "0x102200000"
-fit_load_addr = "0x140000000"
-bootm_addr = "0x140000000"
-timeout = 60
+kernel_load_addr = "0x102200000"   # kernel load/entry address in the FIT
+fit_load_addr = "0x140000000"      # FIT image load address
+bootm_addr = "0x140000000"         # bootm command address
+timeout = 60                       # serial-watch timeout in seconds
 
 [[shell_check_steps]]
 success_regex = [

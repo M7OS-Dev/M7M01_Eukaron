@@ -1,13 +1,7 @@
-# ostool build config for the RME kernel on SpacemiT K3.
-#
-# Self-contained: build_cmd runs from THIS project directory (the directory of
-# the Cargo.toml that ostool resolves), and elf_path is relative to it too.
-#
-# build_cmd = "true" deliberately does NOT rebuild: the kernel is built
-# locally with `make` (see run_k3.sh) and ostool just consumes the already
-# built Object/RME ELF. elf_path points at that ELF; to_bin = true prepares
-# the flat BIN which the board server wraps in a FIT image and boots.
+# ostool build config (Custom system): does not rebuild; the kernel is built
+# by `make` (see run_k3.sh) and ostool consumes the resulting ELF. All paths
+# are relative to this project directory (where the Cargo.toml lives).
 [system.Custom]
-build_cmd = "true"
-elf_path = "Object/RME"
-to_bin = true
+build_cmd = "true"        # skip building; kernel is built by `make`
+elf_path = "Object/RME"   # kernel ELF produced by `make`
+to_bin = true             # also prepare the flat BIN for FIT packaging
