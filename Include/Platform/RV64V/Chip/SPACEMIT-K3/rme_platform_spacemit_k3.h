@@ -1,0 +1,137 @@
+/******************************************************************************
+Filename    : rme_platform_spacemit_k3.h
+Author      : yhy
+Date        : 20/10/2026
+Licence     : The Unlicense; see LICENSE for details.
+Description : The configuration file for the SpacemiT K3 platform
+              (Banana Pi BPI-SM10 / SpacemiT K3 SoC).
+******************************************************************************/
+
+/* Define ********************************************************************/
+/* Debugging *****************************************************************/
+#define RME_ASSERT_ENABLE                               (1U)
+#define RME_DBGLOG_ENABLE                               (1U)
+/* Are we using raw memory mappings? */
+#define RME_PGT_RAW_ENABLE                              (0U)
+
+/* Kernel ********************************************************************/
+/* Kernel object virtual memory base - the kernel lives in the Sv39 high
+ * half: VA = RME_RV64V_VA_BASE + physical. K3 DRAM starts at 0x102000000;
+ * U-Boot enters the kernel in S-mode at 0x102200000; we keep everything
+ * below one 1GB window so a single direct-map leaf suffices.
+ *   - KOM      : PA 0x103000000 -> VA 0xFFFFFFC103000000
+ *   - init image: PA 0x102400000 -> VA 0xFFFFFFC102400000 (embedded)
+ *   - init stack: PA 0x102F00000 (user VA [0x201F0000, 0x20200000))
+ * NOTE: the kernel .bss holds the KOM bitmap (RME_RV64V_Kot) and ends around
+ * PA 0x102302000, so the embedded init image must stay above that. */
+#define RME_KOM_VA_BASE                                 (0xFFFFFFC103000000UL)
+/* Kernel object virtual memory size */
+#define RME_KOM_VA_SIZE                                 (0x1F000000U)
+/* Hypervisor context virtual memory base - set to 0 if no VM */
+#define RME_HYP_VA_BASE                                 (0x0U)
+/* Hypervisor context virtual memory size - set to 0 if no VM */
+#define RME_HYP_VA_SIZE                                 (0xFFFFFFFFU)
+/* Kernel memory allocation granularity order */
+#define RME_KOM_SLOT_ORDER                              (6U)
+/* Kernel stack size and address - high half as well */
+#define RME_KSTK_VA_BASE                                (0xFFFFFFC1022E0000UL)
+#define RME_KSTK_VA_SIZE                                (0x800U)
+/* The maximum number of preemption priorities */
+#define RME_PREEMPT_PRIO_NUM                            (64U)
+
+/* Bootstrap / direct-map window *********************************************/
+/* Physical base of the single 1GB window that maps the whole kernel working
+ * set (image, KOM, stacks, init program). This is also the identity/high-half
+ * leaf in the _start trampoline and the kernel leaf in every top-level page
+ * table (__RME_Pgt_Init). K3 DRAM is 0x102000000 and below 0x140000000, so
+ * the window is [0x100000000, 0x140000000). */
+#define RME_RV64V_KPGT_PA                               (0x100000000U)
+
+/* Init process's first thread - user virtual addresses, decoupled from the
+ * physical pages, matching X64 (first user program at 0x20000000 with its
+ * stack about 2MB above it). The code is embedded in the kernel image at
+ * physical 0x102400000 and the stack physically occupies
+ * [0x102F00000, 0x102F10000). */
+#define RME_RV64V_INIT_ENTRY                            (0x20000000U)
+#define RME_RV64V_INIT_STACK                            (0x20200000U)
+/* Physical backing of the embedded init image and the init stack */
+#define RME_RV64V_INIT_PA                               (0x102400000U)
+#define RME_RV64V_INIT_STACK_PA                         (0x102F00000U)
+
+/* What is the Systick value? The K3 time CSR ticks at 24MHz (DTB
+ * timebase-frequency = 0x16e3600); 10ms per tick = 240000. */
+#define RME_RV64V_OSTIM_VAL                             (240000U)
+
+/* What is the FPU type? K3 is rv64imafdcvh - it has both F and D. For the
+ * initial single-core bring-up the D (double) state is kept disabled
+ * (RME_RV64V_COP_RVD = 0), same proven path as QEMU; switch to 1 once a
+ * program needs double-precision FP. */
+#define RME_COP_NUM                                     (1U)
+#define RME_RV64V_COP_RVF                               (1U)
+#define RME_RV64V_COP_RVD                               (0U)
+
+
+/* Cache mode configuration */
+#define RME_RV64V_CACHE_MOD(CACHE_ID,OPERATION,PARAM)
+/* Cache maintenance */
+#define RME_RV64V_CACHE_MAINT(CACHE_ID,OPERATION,PARAM)
+/* Prefetcher mode ocnfiguration */
+#define RME_RV64V_PRFTH_MOD(PRFTH_ID,OPERATION,PARAM)
+
+/* Performance monitor configuration */
+#define RME_RV64V_PERF_MON_MOD(PERF_ID,OPERATION,PARAM)
+/* Performance monitor cycle counter read or write */
+#define RME_RV64V_PERF_CYCLE_MOD(CYCLE_ID,OPERATION,VALUE)
+
+/* Reboot system - SBI system reset (SRST extension), the K3 OpenSBI
+ * implements it (Linux log: "SBI SRST extension detected"). */
+#define RME_RV64V_REBOOT() \
+do \
+{ \
+    ___RME_RV64V_Sbi_Reset(); \
+} \
+while(0)
+
+/* Preinitialization of critical hardware - nothing needed on the K3, the
+ * SBI services (console/timer/reset) are ready as soon as OpenSBI hands off. */
+#define RME_RV64V_LOWLVL_PREINIT() \
+do \
+{ \
+} \
+while(0)
+
+/* Low-level initialization - arm the SBI timer */
+#define RME_RV64V_LOWLVL_INIT() \
+do \
+{ \
+    /* Enable the S-mode timer interrupt (sie.STIE) */ \
+    ___RME_RV64V_Sie_Timer_Enable(); \
+    /* Arm the first timer event via OpenSBI - no auto-reload, re-armed on \
+     * every tick inside the timer handler */ \
+    ___RME_RV64V_Sbi_Timer_Set(___RME_RV64V_Time_Get()+RME_RV64V_OSTIM_VAL); \
+} \
+while(0)
+
+#if(RME_DBGLOG_ENABLE!=0U)
+/* Debugging output - SBI console putchar (K3 OpenSBI supports the legacy
+ * console putchar; Linux uses it as earlycon=sbi on this board) */
+#define RME_RV64V_PUTCHAR(CHAR) \
+do \
+{ \
+    ___RME_RV64V_Sbi_Console_Putchar((rme_ptr_t)(CHAR)); \
+} \
+while(0)
+
+#else
+#define RME_RV64V_PUTCHAR(CHAR)
+#endif
+
+/* Action before placing processor in low-power mode */
+#define RME_RV64V_WAIT_INT_PRE()
+/* Action after placing processor in low-power mode */
+#define RME_RV64V_WAIT_INT_POST()
+/* End Define ****************************************************************/
+
+/* End Of File ***************************************************************/
+
+/* Copyright (C) Evo-Devo Instrum. All rights reserved ***********************/

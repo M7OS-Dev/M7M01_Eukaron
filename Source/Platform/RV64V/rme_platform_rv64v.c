@@ -799,13 +799,59 @@ rme_ret_t __RME_Kfn_Handler(struct RME_Cap_Cpt* Cpt,
 }
 /* End Function:__RME_Kfn_Handler ********************************************/
 
+/* Function:__RME_RV64V_Pgt_Boot_Init ******************************************
+Description : Build the bootstrap root page table and turn the MMU on. This is
+              called from the assembly startup stub with the MMU still off,
+              so it must not rely on any virtual mapping: every PC-relative
+              address it computes is a physical one.
+              The table holds two 1GB leaves: the identity map (so the code
+              keeps executing right after the satp write) and the same window
+              at the Sv39 high half. The chip's physical window base is the
+              constant RME_RV64V_KPGT_PA from the chip header.
+Input       : None.
+Output      : None.
+Return      : None.
+*******************************************************************************/
+void __RME_RV64V_Pgt_Boot_Init(void)
+{
+    rme_ptr_t* Root;
+    rme_ptr_t Pte;
+    rme_ptr_t Satp;
+    rme_cnt_t Count;
+
+    /* Build the bootstrap root page table. The MMU is still off, so the
+       PC-relative address of the table is its physical address. */
+    Root=(rme_ptr_t*)__RME_Boot_Root;
+    for(Count=0;Count<RME_POW2(RME_PGT_NUM_512);Count++)
+        Root[Count]=0;
+    /* The leaf PTE: PPN|V|R|W|X|A|D. The A (accessed) and D (dirty) bits are
+       set up front - a physical board (SpacemiT K3) checks these strictly,
+       unlike QEMU which tolerates A=D=0 leaves. The U bit stays 0 (kernel
+       only). */
+    Pte=RME_RV64V_MMU_PPN(RME_RV64V_KPGT_PA)|
+         RME_RV64V_MMU_V|RME_RV64V_MMU_R|RME_RV64V_MMU_W|
+         RME_RV64V_MMU_X|RME_RV64V_MMU_A|RME_RV64V_MMU_D;
+    /* The identity map, needed for the few instructions right after the
+       satp write, and the same window at the Sv39 high half. */
+    Root[(RME_RV64V_KPGT_PA)>>RME_PGT_SIZE_1G]=Pte;
+    Root[256U+((RME_RV64V_KPGT_PA)>>RME_PGT_SIZE_1G)]=Pte;
+
+    /* satp = MODE(Sv39=8)<<60 | PPN(root) */
+    Satp=(8UL<<60)|(((rme_ptr_t)Root)>>12);
+
+    /* Turn the MMU on - the same helpers that __RME_Pgt_Set uses. */
+    ___RME_RV64V_SATP_Set(Satp);
+    ___RME_RV64V_TLB_Flush();
+}
+/* End Function:__RME_RV64V_Pgt_Boot_Init **********************************/
+
 /* Function:__RME_RV64V_Lowlvl_Preinit ****************************************
 Description : Initialize the low-level hardware, before the loading of the kernel
               even takes place.
 Input       : None.
 Output      : None.
 Return      : None.
-******************************************************************************/
+*******************************************************************************/
 void __RME_RV64V_Lowlvl_Preinit(void)
 {
     RME_RV64V_LOWLVL_PREINIT();
@@ -903,24 +949,26 @@ void __RME_Boot(void)
                                  RME_PGT_ALL_PERM)==0);
 
     /* The init thread's user code at VA 0x20000000, backed by physical
-     * 0x81030000 where the loader placed the image. Map 16 pages (64KB) so
+     * RME_RV64V_INIT_PA where the loader (QEMU -device loader) placed the
+     * image or the linker embedded it (SpacemiT K3). Map 16 pages (64KB) so
      * the init program's .data/.bss beyond the first page is reachable. */
     for(Count=0;Count<16;Count++)
     {
         RME_ASSERT(_RME_Pgt_Boot_Add(RME_RV64V_CPT,
                                      RME_BOOT_INIT_PGT_L2,
-                                     0x81030000U+(((rme_ptr_t)Count)<<RME_PGT_SIZE_4K),
+                                     RME_RV64V_INIT_PA+(((rme_ptr_t)Count)<<RME_PGT_SIZE_4K),
                                      (rme_ptr_t)Count,
                                      RME_PGT_ALL_PERM)==0);
     }
 
     /* The init thread's stack: VA [0x201F0000,0x20200000) -> physical
-     * [0x81010000,0x81020000); the stack pointer starts at 0x20200000. */
+     * [RME_RV64V_INIT_STACK_PA, +0x10000); the stack pointer starts at
+     * 0x20200000. */
     for(Count=0;Count<16;Count++)
     {
         RME_ASSERT(_RME_Pgt_Boot_Add(RME_RV64V_CPT,
                                      RME_BOOT_INIT_PGT_L2,
-                                     0x81010000U+(((rme_ptr_t)Count)<<RME_PGT_SIZE_4K),
+                                     RME_RV64V_INIT_STACK_PA+(((rme_ptr_t)Count)<<RME_PGT_SIZE_4K),
                                      496U+(rme_ptr_t)Count,
                                      RME_PGT_ALL_PERM)==0);
     }
@@ -1598,8 +1646,8 @@ void __RME_Pgt_Set(struct RME_Cap_Pgt* Pgt)
     /* The page table object lives in the kernel object memory (high half), so
      * translate its VA to PA first. Build satp: [63:60] MODE = 8 (Sv39),
      * [59:44] ASID = 0, [43:0] PPN = root_pa >> 12 (4KB aligned). */
-    Satp=(8ULL<<60)|
-         ((RME_RV64V_VA2PA(RME_CAP_GETOBJ(Pgt,rme_ptr_t))>>12)&0xFFFFFFFFFULL);
+    Satp=(8UL<<60)|
+         ((RME_RV64V_VA2PA(RME_CAP_GETOBJ(Pgt,rme_ptr_t))>>12)&0xFFFFFFFFFUL);
 
     /* Write satp to enable/switch the MMU, then flush the TLB so the new
      * translation takes effect immediately */
@@ -1665,9 +1713,12 @@ rme_ret_t __RME_Pgt_Init(struct RME_Cap_Pgt* Pgt_Op)
 
     if((Pgt_Op->Base&RME_PGT_TOP)!=0)
     {
-        /* Top-level index of the high-half address that maps physical 0x80000000 */
-        Ptr[258]=RME_RV64V_MMU_PPN(0x80000000U)|RME_RV64V_MMU_V|
-                 RME_RV64V_MMU_R|RME_RV64V_MMU_W|RME_RV64V_MMU_X;
+        /* Top-level index of the high-half address that maps the kernel's
+         * physical direct-map window - chip-dependent (QEMU: top[258],
+         * SpacemiT K3: top[260]). A and D are pre-set because physical
+         * hardware (SpacemiT K3) checks these strictly. */
+        Ptr[256U+((RME_RV64V_KPGT_PA)>>RME_PGT_SIZE_1G)]=RME_RV64V_MMU_PPN(RME_RV64V_KPGT_PA)|RME_RV64V_MMU_V|
+                 RME_RV64V_MMU_R|RME_RV64V_MMU_W|RME_RV64V_MMU_X|RME_RV64V_MMU_A|RME_RV64V_MMU_D;
     }
 
     return 0;
@@ -1939,7 +1990,7 @@ rme_ret_t __RME_Pgt_Walk(struct RME_Cap_Pgt* Pgt_Op, rme_ptr_t Vaddr, rme_ptr_t*
 
     /* Sv39's low canonical region ends at 2^38; this port never uses the
      * supervisor high half, so reject anything outside the low region. */
-    if(Vaddr>=0x4000000000ULL)
+    if(Vaddr>=0x4000000000UL)
         return RME_ERR_HAL_FAIL;
 
     /* Get the table and start lookup - the root entry covers 1GB */

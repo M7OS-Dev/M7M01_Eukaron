@@ -137,53 +137,14 @@ F31    $ft11      temporary (caller-save)
     .align              3
 
 _start:
-    /* OpenSBI enters at the physical load address with the MMU off. Build a
-     * bootstrap root table with two 1GB leaves:
-     *   top[2]   - identity map of physical [0x80000000,0xC0000000), needed
-     *              for the few instructions right after satp is enabled;
-     *   top[258] - the same range at the high-half kernel VA.
-     * PC-relative LA yields the physical address here and the high VA later,
-     * so the same code works before and after the switch. */
-    LA                  t0,__RME_Boot_Root
-    LI                  t1,512
-    MV                  t2,t0
-__RME_Boot_Root_Clear:
-    SD                  zero,(t2)
-    ADDI                t2,t2,8
-    ADDI                t1,t1,-1
-    BNEZ                t1,__RME_Boot_Root_Clear
-
-    /* PTE = PPN(0x80000000)<<10 | V|R|W|X (U must stay 0 for the kernel) */
-    LI                  t3,0x2000000F
-    SD                  t3,16(t0)               /* top[2], identity */
-    LI                  t2,2048
-    ADD                 t2,t0,t2
-    SD                  t3,16(t2)               /* top[258], high half */
-
-    /* satp = MODE(Sv39=8)<<60 | PPN(root) */
-    SRLI                t4,t0,12
-    LI                  t5,8
-    SLLI                t5,t5,60
-    OR                  t4,t4,t5
-    CSRW                satp,t4
-    SFENCE.VMA          x0,x0
-
-    /* Jump into the high half (LA gives the physical address here) */
-    LA                  t0,__RME_RV64V_Boot_High
-    LI                  t1,0xFFFFFFC000000000
-    ADD                 t0,t0,t1
-    JR                  t0
-
-__RME_RV64V_Boot_High:
-    /* Now executing at the high-half VA */
+    /* OpenSBI/U-Boot enters at the physical load address with the MMU off.
+     * gp and sp must be valid before the first C call, so set them up first
+     * (these are the physical addresses). */
     .option             push
     .option             norelax
     LA                  gp,__RME_Global
     .option             pop
     LA                  sp,__RME_Stack
-    CSRW                sscratch,sp
-    LA                  t0,__RME_RV64V_Handler
-    CSRW                stvec,t0
 
     /* Clear the bss section. The data section needs no copy: the high-half
      * mapping points straight at the physical load address. */
@@ -195,16 +156,51 @@ __RME_Zero_Clear:
     ADDI                a0,a0,8
     J                   __RME_Zero_Clear
 __RME_Zero_Done:
+    /* Build the bootstrap root page table and turn the MMU on. */
+    CALL                __RME_RV64V_Pgt_Boot_Init
 
-    /* Preinitialize hardware before any initialization */
+    /* The MMU is on and we are still executing at the physical address.
+     * Jump to the Sv39 high half: the linker resolved the absolute virtual
+     * address of the entry into the image (the RISC-V counterpart of the
+     * X64 port's "movq $Boot_High_64,%RAX"). */
+    LA                  t0,__RME_RV64V_High_Entry
+    LD                  t0,0(t0)
+    JR                  t0
+
+__RME_RV64V_Boot_High:
+    /* Now executing at the high-half VA. gp and sp must be the high
+     * addresses from here on: the identity alias is gone once the kernel
+     * installs its own root table. */
+    .option             push
+    .option             norelax
+    LA                  gp,__RME_Global
+    .option             pop
+    LA                  sp,__RME_Stack
+    CSRW                sscratch,sp
+    LA                  t0,__RME_RV64V_Handler
+    CSRW                stvec,t0
+
+    /* Preinitialize the devices before any initialization */
     CALL                __RME_RV64V_Lowlvl_Preinit
     /* Branch to main function */
     J                   main
 
-/* Bootstrap root page table - the loader does not zero it, _start programs it
- * explicitly, and it must survive the .bss clear below. */
+/* The absolute virtual address of the high-half entry, resolved by the
+ * linker. The assembly cannot materialize a 64-bit high-half address with
+ * lui+addi (it does not fit in 32 bits), so the linker puts it into the
+ * image and the stub above loads it. */
+    .section            .text.__rme_rv64v_high_entry
+    .align              3
+
+__RME_RV64V_High_Entry:
+    .quad               __RME_RV64V_Boot_High
+
+/* Bootstrap root page table - the loader does not zero it, the preinit
+ * programs it explicitly, and it must survive the .bss clear above. */
     .section            .bootpgt, "aw", @nobits
     .align              12
+    .globl              __RME_Boot_Root
+    .type               __RME_Boot_Root,@object
 
 __RME_Boot_Root:
     .space              4096

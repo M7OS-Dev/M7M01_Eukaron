@@ -14,7 +14,7 @@ Description : The RV64V hardware abstraction layer header.
 /* Basic Type ****************************************************************/
 #ifndef __RME_S64_T__
 #define __RME_S64_T__
-typedef signed long long rme_s64_t;
+typedef signed long rme_s64_t;
 #endif
 
 #ifndef __RME_S32_T__
@@ -34,7 +34,7 @@ typedef signed char rme_s8_t;
 
 #ifndef __RME_U64_T__
 #define __RME_U64_T__
-typedef unsigned long long rme_u64_t;
+typedef unsigned long rme_u64_t;
 #endif
 
 #ifndef __RME_U32_T__
@@ -277,7 +277,7 @@ while(0)
  * half while physical memory (kernel image, KOM, stacks) stays low, so the
  * kernel is reached at PA+VA_BASE and user processes map the low half. This is
  * the single VA<->PA translation point for the whole port. */
-#define RME_RV64V_VA_BASE                         (0xFFFFFFC000000000ULL)
+#define RME_RV64V_VA_BASE                         (0xFFFFFFC000000000UL)
 /* Convert PA->VA and VA->PA */
 #define RME_RV64V_PA2VA(PA)                       (((rme_ptr_t)(PA))+RME_RV64V_VA_BASE)
 #define RME_RV64V_VA2PA(VA)                       (((rme_ptr_t)(VA))-RME_RV64V_VA_BASE)
@@ -307,7 +307,7 @@ while(0)
  * a non-leaf entry pointing at the next level table. */
 #define RME_RV64V_MMU_LEAF                        (RME_RV64V_MMU_R|RME_RV64V_MMU_W|RME_RV64V_MMU_X)
 /* The PPN field occupies PTE[53:10] */
-#define RME_RV64V_MMU_PPN_MASK                    (0x003FFFFFFFFFFC00ULL)
+#define RME_RV64V_MMU_PPN_MASK                    (0x003FFFFFFFFFFC00UL)
 /* Physical address -> PTE PPN field (PA[55:12] placed at bit 10) */
 #define RME_RV64V_MMU_PPN(X)                      ((((rme_ptr_t)(X))>>12)<<10)
 /* PTE -> physical address (PPN<<12) */
@@ -318,12 +318,14 @@ while(0)
 #define RME_RV64V_PGT_TBL_TOP(X)                  (X)
 
 /* Convert the RME page flags into a Sv39 leaf PTE flag field. The RME R/W/X
- * bits happen to line up with the Sv39 bits, but W must imply R. CACHE/BUFFER/
- * STATIC have no hardware bit in base Sv39, so they are ignored. */
+ * bits happen to line up with the Sv39 bits, but W must imply R. A (accessed)
+ * is always set and D (dirty) is set for writable leaves, as physical
+ * hardware (SpacemiT K3) checks these strictly. CACHE/BUFFER/STATIC have no
+ * hardware bit in base Sv39, so they are ignored. */
 #define RME_RV64V_PGFLG_RME2NAT(FLAGS) \
-    (RME_RV64V_MMU_V| \
+    (RME_RV64V_MMU_V|RME_RV64V_MMU_A| \
      ((((FLAGS)&RME_PGT_READ)!=0U)?RME_RV64V_MMU_R:0U)| \
-     ((((FLAGS)&RME_PGT_WRITE)!=0U)?(RME_RV64V_MMU_W|RME_RV64V_MMU_R):0U)| \
+     ((((FLAGS)&RME_PGT_WRITE)!=0U)?(RME_RV64V_MMU_W|RME_RV64V_MMU_R|RME_RV64V_MMU_D):0U)| \
      ((((FLAGS)&RME_PGT_EXECUTE)!=0U)?RME_RV64V_MMU_X:0U))
 /* Convert a Sv39 PTE back into RME page flags. Every page is reported as
  * cacheable+bufferable because base Sv39 has no per-page cache attributes. */
@@ -665,6 +667,12 @@ __RME_EXTERN__ rme_ptr_t RME_RV64V_Timestamp;
 __RME_EXTERN__ struct RME_CPU_Local RME_RV64V_Local;
 /* RV64V use simple kernel object table */
 __RME_EXTERN__ rme_ptr_t RME_RV64V_Kot[RME_KOT_WORD_NUM];
+/* The bootstrap root page table - defined by the assembly startup stub (the
+ * .bootpgt section). It is always declared extern, because its definition
+ * lives in the assembly file (the same way the X64 port declares its
+ * RME_X64_Kpgt). It must stay outside the .bss: it is still the active root
+ * table while the .bss is being cleared. */
+RME_EXTERN rme_ptr_t __RME_Boot_Root[512];
 /*****************************************************************************/
 
 /* End Public Variable *******************************************************/
@@ -716,6 +724,9 @@ __RME_EXTERN__ rme_ret_t __RME_Kfn_Handler(struct RME_Cap_Cpt* Cpt,
 __RME_EXTERN__ void __RME_RV64V_Lowlvl_Preinit(void);
 __RME_EXTERN__ void __RME_Lowlvl_Init(void);
 __RME_EXTERN__ void __RME_Boot(void);
+/* Build the bootstrap root page table and turn the MMU on - called from the
+ * assembly startup stub before the kernel proper starts. */
+__RME_EXTERN__ void __RME_RV64V_Pgt_Boot_Init(void);
 
 __RME_EXTERN__ void __RME_RV64V_Reboot(void);
 __RME_EXTERN__ void __RME_RV64V_NVIC_Set_Exc_Prio(rme_cnt_t Exc,

@@ -15,7 +15,7 @@ Description : The configuration file for the QEMU virt platform.
 /* Kernel ********************************************************************/
 /* Kernel object virtual memory base - kernel lives in the Sv39 high half:
  * VA = 0xFFFFFFC000000000 + physical 0x81000000 (see RME_RV64V_VA_BASE) */
-#define RME_KOM_VA_BASE                                 (0xFFFFFFC081000000ULL)
+#define RME_KOM_VA_BASE                                 (0xFFFFFFC081000000UL)
 /* Kernel object virtual memory size */
 #define RME_KOM_VA_SIZE                                 (0x1F000000U)
 /* Hypervisor context virtual memory base - set to 0 if no VM */
@@ -25,10 +25,17 @@ Description : The configuration file for the QEMU virt platform.
 /* Kernel memory allocation granularity order */
 #define RME_KOM_SLOT_ORDER                              (6U)
 /* Kernel stack size and address - high half as well */
-#define RME_KSTK_VA_BASE                                (0xFFFFFFC08100E000ULL)
+#define RME_KSTK_VA_BASE                                (0xFFFFFFC08100E000UL)
 #define RME_KSTK_VA_SIZE                                (0x800U)
 /* The maximum number of preemption priorities */
 #define RME_PREEMPT_PRIO_NUM                            (64U)
+
+/* Bootstrap / direct-map window *********************************************/
+/* Physical base of the single 1GB window that maps the whole kernel working
+ * set (image, KOM, stacks, init program). This is also the identity/high-half
+ * leaf in the _start trampoline and the kernel leaf in every top-level page
+ * table (__RME_Pgt_Init). QEMU virt RAM is 0x80000000..0xC0000000. */
+#define RME_RV64V_KPGT_PA                               (0x80000000U)
 
 /* Init process's first thread - user virtual addresses, decoupled from the
  * physical pages, matching X64 (first user program at 0x20000000 with its
@@ -36,6 +43,9 @@ Description : The configuration file for the QEMU virt platform.
  * the stack physically occupies [0x81010000,0x81020000). */
 #define RME_RV64V_INIT_ENTRY                            (0x20000000U)
 #define RME_RV64V_INIT_STACK                            (0x20200000U)
+/* Physical backing of the init image and the init stack (QEMU loader) */
+#define RME_RV64V_INIT_PA                               (0x81030000U)
+#define RME_RV64V_INIT_STACK_PA                         (0x81010000U)
 /* What is the Systick value? - 10ms per tick*/
 #define RME_RV64V_OSTIM_VAL                             (100000U)
 /* What is the FPU type? */
